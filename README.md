@@ -126,24 +126,85 @@ For QA-driven testing:
 
 ## Architecture
 
-See **[docs/architecture.md](docs/architecture.md)** for the full ASCII diagram and a walkthrough of how PM ↔ dev-lead ↔ sub-agents communicate via Claude Code's Teams API and the Agent tool.
-
-The short version:
-
 ```
-Main thread
-    │
-    ├── spawn teammate ──►  PM agent     (runs in background, autonomous)
-    │                         ▲   │
-    │                         │   │ SendMessage
-    │                         │   ▼
-    └── spawn teammate ──►  Dev-lead     (continuous loop, one turn)
-                              │
-                              ├── Agent ──► backend sub-agent  (worktree)
-                              ├── Agent ──► frontend sub-agent (worktree)
-                              ├── Agent ──► test sub-agent
-                              └── Agent ──► qa sub-agent       (Playwright)
+┌──────────────────────────────────────────────────────────────────────┐
+│                            Main thread                               │
+│                         (user / orchestrator)                        │
+└────────┬───────────────────────────────────────┬─────────────────────┘
+         │                                       │
+         │ spawn teammate                        │ spawn teammate
+         │ (background)                          │ (continuous turn)
+         ▼                                       ▼
+  ┌────────────────┐                   ┌────────────────────┐
+  │   PM agent     │◄── SendMessage ───┤   Dev-lead         │
+  │                │    ("refill")     │   (team-lead-agent)│
+  │ scans board    │                   │                    │
+  │ reads          │── "READY: #28" ──►│ picks tickets off  │
+  │ depends-on:    │                   │ Ready, spawns      │
+  │ promotes       │                   │ sub-agents in      │
+  │ Backlog→Ready  │                   │ parallel worktrees │
+  └────────────────┘                   └──┬──────┬──────┬───┘
+                                          │      │      │
+                                          │      │      │  spawn
+                                          ▼      ▼      ▼
+                                  ┌──────────┐ ┌──────┐ ┌──────┐
+                                  │ backend  │ │ front│ │ test │
+                                  │ sub-agent│ │ end  │ │ agent│
+                                  │          │ │ sub  │ │      │
+                                  │ worktree │ │ wt   │ │ tsc/ │
+                                  │ pytest   │ │ jest │ │ lint │
+                                  │ gh pr    │ │ gh pr│ │ build│
+                                  └──────────┘ └──────┘ └──────┘
+                                                            │
+                                                            │ on PASS
+                                                            ▼
+                                                     ┌──────────┐
+                                                     │ qa agent │
+                                                     │ Playwright│
+                                                     │ MCP      │
+                                                     └──────────┘
 ```
+
+### How the actors coordinate
+
+**PM agent** runs in the background as a teammate. Its whole job is board mechanics: it reads each Backlog issue's body, parses `depends-on: #1, #2` lines, and promotes up to 1 frontend + 1 backend unblocked ticket to Ready. Then it sends dev-lead a signal (`READY_TICKETS_AVAILABLE`, `WAITING`, `PROJECT_COMPLETE`, or `ALL_BLOCKED`) and goes idle until dev-lead says "refill."
+
+**Dev-lead** is the orchestrator. It runs as a teammate but keeps a **single continuous turn** from "Ready tickets available" until PM says stop — it never goes idle between cycles, because that would kill the loop. Per cycle:
+
+1. Receive Ready tickets from PM, move them Ready → In Progress
+2. Read the agent prompt files (`frontend.md`, `backend.md`) and spawn dev sub-agents **in parallel** with `isolation: "worktree"` (each sub-agent gets its own checked-out copy of the repo)
+3. When sub-agents return PR links, rebase each PR on `origin/main`
+4. Spawn the test sub-agent with all PRs, wait for results
+5. For any frontend PR that passed: spawn the QA sub-agent (Playwright MCP), wait for results
+6. Move passing tickets to Review, increment retry counts on failures (max 3 per ticket)
+7. SendMessage to PM: "refill" — and loop
+
+**Sub-agents** (backend, frontend, test, qa) are spawned fresh via the `Agent` tool, do one thing, and die. They don't know about the loop, the PM, or each other. They take inputs and return a result string. Dev sub-agents run in isolated git worktrees so two parallel agents can touch the same file without conflicts.
+
+### Why three dev-team skills?
+
+Claude Code's teams API has a known issue where teammates spawned as `"general-purpose"` don't always receive the `Agent` tool at runtime — which means dev-lead can't spawn sub-agents. The three skills are three workarounds:
+
+| Skill                | PM runs as... | Dev-lead runs as... | Sub-agents spawned by...                 |
+|----------------------|---------------|---------------------|------------------------------------------|
+| `/dev-team`          | teammate      | teammate            | dev-lead (if Agent tool is present)      |
+| `/dev-team-hybrid`   | teammate      | **main thread**     | main thread                              |
+| `/dev-team-proxy`    | teammate      | teammate            | main thread (on spawn requests from dev-lead) |
+
+Use `/dev-team` first. If dev-lead hits `FATAL: Agent tool missing`, fall back to `/dev-team-hybrid` — it's the most reliable.
+
+### Message protocol
+
+PM ↔ dev-lead communicate via `SendMessage`. The signals are plain strings in the message body; parsers look for exact substrings:
+
+- `READY_TICKETS_AVAILABLE` — PM found work, dev-lead should proceed
+- `WAITING` — Backlog has tickets but they're all blocked by in-progress work
+- `PROJECT_COMPLETE` — board is empty (all Done or Review)
+- `ALL_BLOCKED` — nothing unblocked, nothing in progress, stuck
+
+When dev-lead sees any of `WAITING`, `PROJECT_COMPLETE`, or `ALL_BLOCKED`, it must output its final report **in the same turn** and stop — no more messages to PM.
+
+See **[docs/architecture.md](docs/architecture.md)** for the full walkthrough including the QA track, worktree isolation details, and failure modes.
 
 ## Limitations and known issues
 
