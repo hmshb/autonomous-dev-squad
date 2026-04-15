@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git:*)",
+      "Bash(gh:*)",
+      "Bash(mkdir:*)",
+      "Bash(npm:*)",
+      "Bash(pip:*)",
+      "Bash(python:*)",
+      "Bash(uvicorn:*)",
+      "Bash(npx:*)",
+      "Bash(ls:*)",
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep",
+      "WebSearch"
+    ],
+    "defaultMode": "bypassPermissions"
+  },
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  }
+}
