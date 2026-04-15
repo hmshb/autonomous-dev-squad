@@ -87,17 +87,16 @@ Each sub-agent is spawned fresh via the `Agent` tool, does one thing, and dies. 
 
 All sub-agents run with `mode: "bypassPermissions"` because they need to execute `git`, `gh`, `npm`, `pytest`, etc. without prompting.
 
-## Why three dev-team skills?
+## Why two dev-team skills?
 
-Claude Code's teams API has a known issue where teammates spawned as `"general-purpose"` don't always receive the `Agent` tool at runtime — which means dev-lead can't spawn sub-agents. The three skills are three workarounds:
+Claude Code's teams API has a known issue where teammates spawned as `"general-purpose"` don't always receive the `Agent` tool at runtime — which means dev-lead can't spawn sub-agents. The two skills give you a primary path and a reliable fallback:
 
 | Skill                | PM runs as... | Dev-lead runs as... | Sub-agents spawned by... |
 |----------------------|---------------|---------------------|--------------------------|
 | `/dev-team`          | teammate      | teammate            | dev-lead (if Agent tool is present) |
 | `/dev-team-hybrid`   | teammate      | **main thread**     | main thread              |
-| `/dev-team-proxy`    | teammate      | teammate            | main thread (on spawn requests from dev-lead) |
 
-Use `/dev-team` first. If dev-lead hits `FATAL: Agent tool missing`, fall back to `/dev-team-hybrid` — it's the most reliable. `/dev-team-proxy` is a middle ground that keeps dev-lead as a teammate but relies on the main thread as a spawn relay.
+Use `/dev-team` first. If dev-lead hits `FATAL: Agent tool missing`, fall back to `/dev-team-hybrid` — it's simpler and more reliable.
 
 ## The QA track (`/qa`, `/qa-fix`)
 
@@ -123,13 +122,6 @@ PM ↔ dev-lead communicate via `SendMessage`. The signals are plain strings in 
 
 When dev-lead sees any of `WAITING`, `PROJECT_COMPLETE`, or `ALL_BLOCKED`, it must output its final report **in the same turn** and stop — no more messages to PM.
 
-The `team-lead-proxy.md` variant adds a second protocol for dev-lead ↔ main-thread spawn relay:
-
-- `SPAWN_REQUEST` (dev-lead → main) with type, issue, PR, mode, and additional context
-- `SPAWN_RESULT` (main → dev-lead) with status and the sub-agent's full return message
-- `REBASE_REQUEST` / `REBASE_RESULT` for rebase operations that the proxy handles
-- Multiple requests in one message separated by `===` for parallel spawns
-
 ## Worktree isolation
 
 Dev sub-agents are spawned with `isolation: "worktree"`, which gives each one its own checked-out copy of the repo in a separate directory. This means:
@@ -144,4 +136,4 @@ Dev sub-agents are spawned with `isolation: "worktree"`, which gives each one it
 - **Test failure on a PR** → increment retry count, spawn dev in fix mode, re-run test agent (max 3 attempts)
 - **QA `BLOCKED` result** (infra issue, not a real bug) → do **not** count as a retry, move the ticket to Review anyway
 - **2 consecutive empty cycles** (zero tickets reached Review) → dev-lead stops with "stuck" reason and produces a final report
-- **Teammate-Agent-tool bug** → fall back to a hybrid/proxy skill (see table above)
+- **Teammate-Agent-tool bug** → fall back to `/dev-team-hybrid` (see table above)

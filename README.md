@@ -47,13 +47,12 @@ You: "/dev-team"
 
 ## What's inside
 
-### Agents (10)
+### Agents (9)
 
 | Agent | Role |
 |---|---|
 | `agents/dev/pm-agent.md` | Reads the board, resolves `depends-on:` dependencies, promotes Backlog → Ready with a 1 FE + 1 BE slot limit |
 | `agents/dev/team-lead-agent.md` | Orchestrator teammate that spawns dev/test/QA sub-agents in a continuous loop |
-| `agents/dev/team-lead-proxy.md` | Same orchestrator logic, but sends spawn requests to the main thread (works around the teammate-Agent-tool bug) |
 | `agents/dev/backend.md` | Implements one backend ticket, runs TDD tests, opens a PR |
 | `agents/dev/frontend.md` | Implements one frontend ticket; optionally invokes `frontend-design` for design-heavy work |
 | `agents/dev/test-agent.md` | Validates PRs (pytest / jest / tsc / lint / build), posts reports on PR + issue |
@@ -62,14 +61,13 @@ You: "/dev-team"
 | `agents/qa/system-qa.md` | Per-module Playwright browser testing with bug report output |
 | `agents/qa/fullstack.md` | Reads QA bug reports, fixes bugs across frontend + backend, opens a fix PR |
 
-### Skills (6)
+### Skills (5)
 
 | Skill | What it does |
 |---|---|
 | `skills/create-ticket` | `/create-ticket` — create or update GitHub issues with labels and project-board placement in one command |
 | `skills/dev-team` | `/dev-team` — full autonomous mode (PM + dev-lead as teammates) |
 | `skills/dev-team-hybrid` | `/dev-team-hybrid` — PM as teammate, main thread as dev-lead (avoids the teammate Agent-tool bug) |
-| `skills/dev-team-proxy` | `/dev-team-proxy` — PM + dev-lead both as teammates, main thread relays spawns |
 | `skills/qa` | `/qa` — module-by-module QA with auto fix-and-retest loop |
 | `skills/qa-fix` | `/qa-fix` — instruction-driven QA ("the chips aren't highlighting on click" → test + fix + PR) |
 
@@ -181,17 +179,16 @@ For QA-driven testing:
 
 **Sub-agents** (backend, frontend, test, qa) are spawned fresh via the `Agent` tool, do one thing, and die. They don't know about the loop, the PM, or each other. They take inputs and return a result string. Dev sub-agents run in isolated git worktrees so two parallel agents can touch the same file without conflicts.
 
-### Why three dev-team skills?
+### Why two dev-team skills?
 
-Claude Code's teams API has a known issue where teammates spawned as `"general-purpose"` don't always receive the `Agent` tool at runtime — which means dev-lead can't spawn sub-agents. The three skills are three workarounds:
+Claude Code's teams API has a known issue where teammates spawned as `"general-purpose"` don't always receive the `Agent` tool at runtime — which means dev-lead can't spawn sub-agents. The two skills give you a primary path and a reliable fallback:
 
 | Skill                | PM runs as... | Dev-lead runs as... | Sub-agents spawned by...                 |
 |----------------------|---------------|---------------------|------------------------------------------|
 | `/dev-team`          | teammate      | teammate            | dev-lead (if Agent tool is present)      |
 | `/dev-team-hybrid`   | teammate      | **main thread**     | main thread                              |
-| `/dev-team-proxy`    | teammate      | teammate            | main thread (on spawn requests from dev-lead) |
 
-Use `/dev-team` first. If dev-lead hits `FATAL: Agent tool missing`, fall back to `/dev-team-hybrid` — it's the most reliable.
+Use `/dev-team` first. If dev-lead hits `FATAL: Agent tool missing`, fall back to `/dev-team-hybrid` — it's simpler and more reliable.
 
 ### Message protocol
 
@@ -208,7 +205,7 @@ See **[docs/architecture.md](docs/architecture.md)** for the full walkthrough in
 
 ## Limitations and known issues
 
-- **Teammate Agent tool bug.** In some Claude Code versions, teammates spawned with `subagent_type: "general-purpose"` don't receive Agent tool access at runtime. The three `dev-team-*` skills are three workarounds for this: `/dev-team` is the simplest (use if it works for you), `/dev-team-hybrid` makes the main thread the dev-lead, `/dev-team-proxy` makes the main thread a spawn relay.
+- **Teammate Agent tool bug.** In some Claude Code versions, teammates spawned with `subagent_type: "general-purpose"` don't receive Agent tool access at runtime. `/dev-team` is the simplest (use if it works for you); `/dev-team-hybrid` is the fallback that makes the main thread the dev-lead, sidestepping the bug entirely.
 - **Module list in QA agents is project-specific.** The default modules (`auth, personas, generation, history, admin, uiux`) are an example set from the project this was extracted from. Edit `agents/qa/system-qa.md` and `agents/qa/run-qa.md` to match your project's modules before running QA.
 - **Requires GitHub Projects v2.** The PM agent and create-ticket skill use the newer projects API, not the deprecated v1 boards.
 - **Opinionated monorepo layout.** The test and QA agents assume a `backend/` + `frontend/` directory layout (FastAPI + Next.js by default). Adapt the install/start commands for your stack — stack-agnostic sections are marked inline.

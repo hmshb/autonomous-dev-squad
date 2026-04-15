@@ -95,7 +95,6 @@ Map each option to its placeholder:
 The placeholders appear in these files:
 - `.claude/agents/dev/pm-agent.md`
 - `.claude/agents/dev/team-lead-agent.md`
-- `.claude/agents/dev/team-lead-proxy.md`
 - `.claude/skills/create-ticket/SKILL.md`
 - `.claude/skills/dev-team-hybrid/SKILL.md`
 
@@ -120,7 +119,6 @@ STATUS_DONE="e7f8a9b0"
 FILES=(
   agents/dev/pm-agent.md
   agents/dev/team-lead-agent.md
-  agents/dev/team-lead-proxy.md
   skills/create-ticket/SKILL.md
   skills/dev-team-hybrid/SKILL.md
 )
@@ -164,7 +162,6 @@ $values = @{
 $files = @(
   "agents\dev\pm-agent.md",
   "agents\dev\team-lead-agent.md",
-  "agents\dev\team-lead-proxy.md",
   "skills\create-ticket\SKILL.md",
   "skills\dev-team-hybrid\SKILL.md"
 )
